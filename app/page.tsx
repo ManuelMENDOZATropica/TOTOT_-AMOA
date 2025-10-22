@@ -209,21 +209,21 @@ export default function HomePage() {
   const currentPrompt = started && !showDiscount ? riddles[currentRiddleIndex]?.prompt : undefined;
 
   return (
-    <main className="min-h-screen w-full">
+    <main className="min-h-screen w-full text-white">
       <Stage mageState={mageState} text={stageText}>
         {!started ? (
           <button
             type="button"
             onClick={handleStart}
-            className="w-full rounded-xl bg-indigo-500 px-6 py-3 text-lg font-semibold text-white shadow-lg transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="w-full border-2 border-white/60 px-6 py-3 text-lg font-bold uppercase tracking-[0.3em] text-white transition hover:border-white hover:text-white disabled:cursor-not-allowed disabled:border-white/30 disabled:text-white/30"
             disabled={isLoading}
           >
             Empezar
           </button>
         ) : showDiscount ? null : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-6">
             {currentPrompt ? (
-              <div className="rounded-lg bg-white/90 px-4 py-2 text-center text-sm font-medium text-slate-700 shadow">
+              <div className="text-center text-sm font-bold uppercase tracking-[0.35em] text-white drop-shadow-[0_0_10px_rgba(0,0,0,0.6)]">
                 {currentPrompt}
               </div>
             ) : null}
