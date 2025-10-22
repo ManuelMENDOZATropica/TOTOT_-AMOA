@@ -80,6 +80,7 @@ export default function HomePage() {
       const payloadMessages = [...messagesRef.current, userMessage];
       messagesRef.current = payloadMessages;
       setMessages(payloadMessages);
+      const requestMessages = payloadMessages;
 
       try {
         const response = await fetch("/api/chat", {
