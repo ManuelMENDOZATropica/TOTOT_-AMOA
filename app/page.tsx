@@ -44,6 +44,7 @@ function hasDiscount(content: string) {
 export default function HomePage() {
   const [mageState, setMageState] = useState<MageState>("neutro");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>(messages);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted] = useState(false);
@@ -71,6 +72,10 @@ export default function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const updateMageState = useCallback((state: MageState) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -96,12 +101,10 @@ export default function HomePage() {
       updateMageState("pensando");
       setIsLoading(true);
 
-      let payloadMessages: ChatMessage[] = [];
-
-      setMessages((prev) => {
-        payloadMessages = [...prev, { role: "user", content: trimmed }];
-        return payloadMessages;
-      });
+      const userMessage: ChatMessage = { role: "user", content: trimmed };
+      const payloadMessages = [...messagesRef.current, userMessage];
+      messagesRef.current = payloadMessages;
+      setMessages(payloadMessages);
 
       const serializedMessages: ChatMessage[] = payloadMessages.map(({ role, content }) => ({
         role,
@@ -171,7 +174,11 @@ export default function HomePage() {
           content: assistantContent
         };
 
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => {
+          const nextMessages = [...prev, assistantMessage];
+          messagesRef.current = nextMessages;
+          return nextMessages;
+        });
 
         if (emotion === "feliz" || emotion === "furioso") {
           updateMageState(emotion);
