@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage } from "@/components/Stage";
 import { ChatInput } from "@/components/ChatInput";
 
@@ -10,6 +10,7 @@ export type ChatMessage = {
 };
 
 type MageState = "neutro" | "feliz" | "furioso" | "pensando";
+type EvaluationLabel = "CORRECTA" | "INCORRECTA" | "PENDIENTE";
 
 function stripTags(content: string) {
   return content.replace(/\[\[[^\]]+\]\]/g, "").trim();
@@ -39,6 +40,80 @@ function extractAciertos(content: string) {
 
 function hasDiscount(content: string) {
   return /\[\[DESCUENTO:AMOA-MAGO-10\]\]/i.test(content);
+}
+
+function stripTags(content: string) {
+  return content.replace(/\[\[[^\]]+\]\]/g, "").trim();
+}
+
+function extractEmotion(content: string): MageState {
+  const match = content.match(/\[\[EMOCION:(NEUTRO|FELIZ|FURIOSO)\]\]/i);
+  if (!match) {
+    return "neutro";
+  }
+
+  const value = match[1].toLowerCase();
+  switch (value) {
+    case "feliz":
+      return "feliz";
+    case "furioso":
+      return "furioso";
+    default:
+      return "neutro";
+  }
+}
+
+function extractAciertos(content: string) {
+  const match = content.match(/\[\[ACIERTOS:(\d+)\]\]/i);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function hasDiscount(content: string) {
+  const pattern = new RegExp(`\\[\\[DESCUENTO:${DISCOUNT_CODE}\\]\\]`, "i");
+  return pattern.test(content);
+}
+
+function computeGameStatus(messages: ChatMessage[]): {
+  projectedSuccess: number;
+  evaluationLabel: EvaluationLabel;
+} {
+  const assistantMessages = messages.filter((message) => message.role === "assistant");
+  const lastAssistant = assistantMessages[assistantMessages.length - 1];
+  const previousAssistant = assistantMessages[assistantMessages.length - 2];
+
+  const lastAciertos = lastAssistant ? extractAciertos(lastAssistant.content) : null;
+  const previousAciertos = previousAssistant ? extractAciertos(previousAssistant.content) : null;
+
+  const projectedSuccess = lastAciertos ?? previousAciertos ?? 0;
+  const lastMessage = messages[messages.length - 1];
+
+  if (!lastAssistant) {
+    return { projectedSuccess: 0, evaluationLabel: "PENDIENTE" as EvaluationLabel };
+  }
+
+  if (!lastMessage || lastMessage.role !== "assistant") {
+    return { projectedSuccess, evaluationLabel: "PENDIENTE" as EvaluationLabel };
+  }
+
+  if (lastAciertos !== null && previousAciertos !== null) {
+    if (lastAciertos > previousAciertos) {
+      return { projectedSuccess, evaluationLabel: "CORRECTA" as EvaluationLabel };
+    }
+
+    if (lastAciertos === previousAciertos) {
+      return { projectedSuccess, evaluationLabel: "INCORRECTA" as EvaluationLabel };
+    }
+  }
+
+  if (lastAciertos !== null && previousAciertos === null) {
+    if (lastAciertos > 0) {
+      return { projectedSuccess, evaluationLabel: "CORRECTA" as EvaluationLabel };
+    }
+
+    return { projectedSuccess, evaluationLabel: "PENDIENTE" as EvaluationLabel };
+  }
+
+  return { projectedSuccess, evaluationLabel: "PENDIENTE" as EvaluationLabel };
 }
 
 export default function HomePage() {
@@ -112,7 +187,7 @@ export default function HomePage() {
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ messages: payloadMessages })
+          body: JSON.stringify({ messages: requestMessages })
         });
 
         if (!response.ok) {
