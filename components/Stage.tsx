@@ -41,17 +41,9 @@ export function Stage({ mageState, text, children, className }: StageProps) {
         />
       </div>
 
-      <div className="absolute inset-x-0 top-10 z-30 flex justify-center">
-        <div className="relative flex h-64 w-full max-w-3xl items-start justify-center">
-          <Image
-            src="/assets/globoTexto.png"
-            alt="Globo de texto"
-            fill
-            className="object-contain"
-          />
-          <div className="pointer-events-none absolute inset-x-12 top-10 flex max-h-[65%] flex-col overflow-hidden text-center text-lg leading-relaxed text-slate-900 sm:text-xl">
-            <p className="whitespace-pre-wrap">{text}</p>
-          </div>
+      <div className="absolute inset-x-0 top-12 z-30 flex justify-center px-6">
+        <div className="pointer-events-none w-full max-w-5xl text-center text-lg leading-relaxed text-white drop-shadow-[0_0_12px_rgba(0,0,0,0.65)] sm:text-2xl">
+          <p className="whitespace-pre-wrap">{text}</p>
         </div>
       </div>
 
@@ -59,14 +51,14 @@ export function Stage({ mageState, text, children, className }: StageProps) {
         <Image
           src={mageAssets[mageState]}
           alt="Mago pixel art"
-          width={600}
-          height={600}
-          className="w-[55vw] max-w-xl"
+          width={3000}
+          height={3000}
+          className="w-[90vw] max-w-[1400px]"
         />
       </div>
 
-      <div className="absolute inset-x-0 bottom-24 z-40 flex justify-center px-4">
-        <div className="w-full max-w-lg">{children}</div>
+      <div className="absolute inset-x-0 bottom-16 z-40 flex justify-center px-6">
+        <div className="w-full max-w-2xl">{children}</div>
       </div>
     </div>
   );
