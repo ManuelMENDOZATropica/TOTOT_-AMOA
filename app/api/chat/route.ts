@@ -32,7 +32,9 @@ export async function POST(request: Request) {
         { role: "system", content: systemPrompt },
         ...body.messages.map((message) => ({ role: message.role, content: message.content }))
       ],
-      temperature: 0.7
+      temperature: 0.9,
+      top_p: 0.9,
+      presence_penalty: 0.3
     });
 
     const content = response.choices[0]?.message?.content ?? "";
