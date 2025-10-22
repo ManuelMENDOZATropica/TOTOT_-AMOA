@@ -97,7 +97,6 @@ export default function HomePage() {
       updateMageState("pensando");
       setIsLoading(true);
 
-      let enrichedContent = trimmed;
       let evaluationLabel: "CORRECTA" | "INCORRECTA" | "NO_EVALUADA" = "NO_EVALUADA";
       let isCorrect = false;
       let projectedSuccess = successCount;
@@ -115,21 +114,58 @@ export default function HomePage() {
         projectedSuccess = isCorrect ? successCount + 1 : successCount;
         projectedIndex = isCorrect ? currentRiddleIndex + 1 : currentRiddleIndex;
         postResponseMageState = isCorrect ? "feliz" : "furioso";
-
-        enrichedContent = [
-          `Respuesta del jugador: "${trimmed}".`,
-          `[RESULTADO] ${evaluationLabel}.`,
-          `[PROGRESO] ${projectedSuccess}/${riddles.length}.`,
-          `[ACERTIJO_ACTUAL] ${currentRiddleIndex + 1}.`
-        ].join(" ");
       }
 
       let payloadMessages: ChatMessage[] = [];
 
       setMessages((prev) => {
-        payloadMessages = [...prev, { role: "user", content: enrichedContent }];
+        payloadMessages = [...prev, { role: "user", content: trimmed }];
         return payloadMessages;
       });
+
+      const serializedMessages: ChatMessage[] = payloadMessages.map(({ role, content }) => ({
+        role,
+        content
+      }));
+
+      const nextRiddlePrompt =
+        projectedIndex < riddles.length ? riddles[projectedIndex]?.prompt ?? null : null;
+
+      const contextLines = ["Estado del juego:"];
+
+      if (evaluationLabel === "CORRECTA") {
+        contextLines.push("- La última respuesta del jugador fue correcta.");
+      } else if (evaluationLabel === "INCORRECTA") {
+        contextLines.push("- La última respuesta del jugador fue incorrecta.");
+      } else {
+        contextLines.push("- No se ha evaluado ninguna respuesta todavía.");
+      }
+
+      contextLines.push(`- Aciertos acumulados: ${projectedSuccess}/${riddles.length}.`);
+
+      if (nextRiddlePrompt) {
+        contextLines.push(`- El acertijo activo es: "${nextRiddlePrompt}".`);
+        if (evaluationLabel === "CORRECTA") {
+          contextLines.push("- Felicita brevemente y anima al jugador con el siguiente reto.");
+        } else if (evaluationLabel === "INCORRECTA") {
+          contextLines.push("- Anima al jugador a intentarlo de nuevo sin revelar la respuesta.");
+        } else {
+          contextLines.push("- Da la bienvenida e invita al jugador a resolver el acertijo.");
+        }
+      } else {
+        contextLines.push(
+          `- Todos los acertijos se completaron. Felicita al jugador y menciona el descuento ${DISCOUNT_CODE} antes de despedirte.`
+        );
+      }
+
+      contextLines.push("- Responde en español usando una o dos frases amistosas.");
+
+      const systemContext = contextLines.join("\n");
+
+      const requestMessages: ChatMessage[] = [
+        ...serializedMessages,
+        { role: "system", content: systemContext }
+      ];
 
       try {
         const response = await fetch("/api/chat", {
@@ -137,7 +173,7 @@ export default function HomePage() {
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ messages: payloadMessages })
+          body: JSON.stringify({ messages: requestMessages })
         });
 
         if (!response.ok) {
