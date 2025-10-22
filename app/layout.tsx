@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Press_Start_2P } from "next/font/google";
 import "./globals.css";
+
+const pressStart = Press_Start_2P({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-press-start"
+});
 
 export const metadata: Metadata = {
   title: "Amoa | Mago de los Acertijos",
@@ -13,8 +20,10 @@ export default function RootLayout({
   children: ReactNode;
 }>) {
   return (
-    <html lang="es">
-      <body className="font-sans">{children}</body>
+    <html lang="es" className={pressStart.variable}>
+      <body className="font-pressStart">
+        {children}
+      </body>
     </html>
   );
 }
