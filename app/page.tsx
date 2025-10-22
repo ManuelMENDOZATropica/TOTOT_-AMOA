@@ -12,26 +12,35 @@ export type ChatMessage = {
 type MageState = "neutro" | "feliz" | "furioso" | "pensando";
 type EvaluationLabel = "CORRECTA" | "INCORRECTA" | "PENDIENTE";
 
-type Riddle = {
-  prompt: string;
-};
+function stripTags(content: string) {
+  return content.replace(/\[\[[^\]]+\]\]/g, "").trim();
+}
 
-const DISCOUNT_CODE = "AMOA-MAGO-10";
-
-const riddles: Riddle[] = [
-  {
-    prompt:
-      "Tengo agujas que no pinchan y números que contar. Trabajo sin descanso, ¿me puedes nombrar?"
-  },
-  {
-    prompt:
-      "Vuelo sin alas, lloro sin ojos y donde voy la oscuridad reposa. ¿Qué fenómeno misterioso soy?"
-  },
-  {
-    prompt:
-      "Sin ser planta tengo hojas, sin ser animal respiro historias. ¿Qué objeto guardo secretos de memoria?"
+function extractEmotion(content: string): MageState {
+  const match = content.match(/\[\[EMOCION:(NEUTRO|FELIZ|FURIOSO)\]\]/i);
+  if (!match) {
+    return "neutro";
   }
-];
+
+  const value = match[1].toLowerCase();
+  switch (value) {
+    case "feliz":
+      return "feliz";
+    case "furioso":
+      return "furioso";
+    default:
+      return "neutro";
+  }
+}
+
+function extractAciertos(content: string) {
+  const match = content.match(/\[\[ACIERTOS:(\d+)\]\]/i);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function hasDiscount(content: string) {
+  return /\[\[DESCUENTO:AMOA-MAGO-10\]\]/i.test(content);
+}
 
 function stripTags(content: string) {
   return content.replace(/\[\[[^\]]+\]\]/g, "").trim();
@@ -114,6 +123,7 @@ export default function HomePage() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted] = useState(false);
+  const [, setSuccessCount] = useState(0);
   const [showDiscount, setShowDiscount] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -140,13 +150,6 @@ export default function HomePage() {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
-
-  const { projectedSuccess, evaluationLabel } = useMemo(
-    () => computeGameStatus(messages),
-    [messages]
-  );
-
-  const projectedIndex = Math.min(projectedSuccess, riddles.length);
 
   const updateMageState = useCallback((state: MageState) => {
     if (timeoutRef.current) {
@@ -177,50 +180,6 @@ export default function HomePage() {
       const payloadMessages = [...messagesRef.current, userMessage];
       messagesRef.current = payloadMessages;
       setMessages(payloadMessages);
-
-      const serializedMessages: ChatMessage[] = payloadMessages.map(({ role, content }) => ({
-        role,
-        content
-      }));
-
-      const nextRiddlePrompt =
-        projectedIndex < riddles.length ? riddles[projectedIndex]?.prompt ?? null : null;
-
-      const contextLines = ["Estado del juego:"];
-
-      if (evaluationLabel === "CORRECTA") {
-        contextLines.push("- La última respuesta del jugador fue correcta.");
-      } else if (evaluationLabel === "INCORRECTA") {
-        contextLines.push("- La última respuesta del jugador fue incorrecta.");
-      } else {
-        contextLines.push("- No se ha evaluado ninguna respuesta todavía.");
-      }
-
-      contextLines.push(`- Aciertos acumulados: ${projectedSuccess}/${riddles.length}.`);
-
-      if (nextRiddlePrompt) {
-        contextLines.push(`- El acertijo activo es: "${nextRiddlePrompt}".`);
-        if (evaluationLabel === "CORRECTA") {
-          contextLines.push("- Felicita brevemente y anima al jugador con el siguiente reto.");
-        } else if (evaluationLabel === "INCORRECTA") {
-          contextLines.push("- Anima al jugador a intentarlo de nuevo sin revelar la respuesta.");
-        } else {
-          contextLines.push("- Da la bienvenida e invita al jugador a resolver el acertijo.");
-        }
-      } else {
-        contextLines.push(
-          `- Todos los acertijos se completaron. Felicita al jugador y menciona el descuento ${DISCOUNT_CODE} antes de despedirte.`
-        );
-      }
-
-      contextLines.push("- Responde en español usando una o dos frases amistosas.");
-
-      const systemContext = contextLines.join("\n");
-
-      const requestMessages: ChatMessage[] = [
-        ...serializedMessages,
-        { role: "system", content: systemContext }
-      ];
 
       try {
         const response = await fetch("/api/chat", {
@@ -258,6 +217,10 @@ export default function HomePage() {
           updateMageState("neutro");
         }
 
+        if (aciertos !== null) {
+          setSuccessCount(aciertos);
+        }
+
         if (unlockedDiscount) {
           setShowDiscount(true);
         }
@@ -269,7 +232,7 @@ export default function HomePage() {
         setIsLoading(false);
       }
     },
-    [evaluationLabel, projectedIndex, projectedSuccess, updateMageState]
+    [updateMageState]
   );
 
   const handleStart = async () => {

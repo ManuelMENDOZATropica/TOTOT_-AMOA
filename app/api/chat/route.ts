@@ -15,7 +15,7 @@ Instrucciones de estilo y formato:
 - Usa [[EMOCION:NEUTRO]] cuando estés iniciando o en transiciones sin evaluar una respuesta.
 - Al final de cada mensaje incluye también [[ACIERTOS:x]] con el número de acertijos resueltos hasta ese momento.
 - Tras cada acierto, lanza inmediatamente un nuevo acertijo inédito, hasta llegar a tres aciertos.
-- Cuando llegues a tres aciertos, entrega el código AMOA-MAGO-10 y cierra la interacción sin proponer más acertijos. Incluye la marca [[DESCUENTO:AMOA-MAGO-10]] en ese mensaje.
+- Cuando llegues a tres aciertos, entrega el código AMOA-MAGO-10 y cierra la interacción sin proponer más acertijos. Incluye la marca [[DESCUENTO:AMOA-MAGO-10]] en ese mensaje y termina diciendo: visita www.tuempresaaqui.com para cobrar el código.
 - No utilices listas numeradas ni bloques de instrucciones técnicos; habla como mago cascarrabias. Mantén las marcas entre corchetes exactas como se indica.`;
 
 export async function POST(request: Request) {
