@@ -1,8 +1,7 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
-
-type MageState = "neutro" | "feliz" | "furioso" | "pensando";
+import type { MageState } from "@/lib/chatTags";
 
 const mageAssets: Record<MageState, string> = {
   neutro: "/assets/magoNeutro.png",
