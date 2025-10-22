@@ -47,12 +47,12 @@ export function Stage({ mageState, text, children, className }: StageProps) {
         </div>
       </div>
 
-      <div className="absolute inset-x-0 bottom-[40px%] z-10 flex justify-center">
+      <div className="absolute inset-x-0 bottom-[80px%] z-10 flex justify-center">
         <Image
           src={mageAssets[mageState]}
           alt="Mago pixel art"
-          width={3000}
-          height={3000}
+          width={2000}
+          height={2000}
           className="w-[90vw] max-w-[1400px]"
         />
       </div>
