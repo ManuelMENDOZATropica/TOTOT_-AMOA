@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage } from "@/components/Stage";
 import { ChatInput } from "@/components/ChatInput";
 
@@ -10,6 +10,28 @@ export type ChatMessage = {
 };
 
 type MageState = "neutro" | "feliz" | "furioso" | "pensando";
+type EvaluationLabel = "CORRECTA" | "INCORRECTA" | "PENDIENTE";
+
+type Riddle = {
+  prompt: string;
+};
+
+const DISCOUNT_CODE = "AMOA-MAGO-10";
+
+const riddles: Riddle[] = [
+  {
+    prompt:
+      "Tengo agujas que no pinchan y números que contar. Trabajo sin descanso, ¿me puedes nombrar?"
+  },
+  {
+    prompt:
+      "Vuelo sin alas, lloro sin ojos y donde voy la oscuridad reposa. ¿Qué fenómeno misterioso soy?"
+  },
+  {
+    prompt:
+      "Sin ser planta tengo hojas, sin ser animal respiro historias. ¿Qué objeto guardo secretos de memoria?"
+  }
+];
 
 function stripTags(content: string) {
   return content.replace(/\[\[[^\]]+\]\]/g, "").trim();
@@ -38,7 +60,51 @@ function extractAciertos(content: string) {
 }
 
 function hasDiscount(content: string) {
-  return /\[\[DESCUENTO:AMOA-MAGO-10\]\]/i.test(content);
+  const pattern = new RegExp(`\\[\\[DESCUENTO:${DISCOUNT_CODE}\\]\\]`, "i");
+  return pattern.test(content);
+}
+
+function computeGameStatus(messages: ChatMessage[]): {
+  projectedSuccess: number;
+  evaluationLabel: EvaluationLabel;
+} {
+  const assistantMessages = messages.filter((message) => message.role === "assistant");
+  const lastAssistant = assistantMessages[assistantMessages.length - 1];
+  const previousAssistant = assistantMessages[assistantMessages.length - 2];
+
+  const lastAciertos = lastAssistant ? extractAciertos(lastAssistant.content) : null;
+  const previousAciertos = previousAssistant ? extractAciertos(previousAssistant.content) : null;
+
+  const projectedSuccess = lastAciertos ?? previousAciertos ?? 0;
+  const lastMessage = messages[messages.length - 1];
+
+  if (!lastAssistant) {
+    return { projectedSuccess: 0, evaluationLabel: "PENDIENTE" as EvaluationLabel };
+  }
+
+  if (!lastMessage || lastMessage.role !== "assistant") {
+    return { projectedSuccess, evaluationLabel: "PENDIENTE" as EvaluationLabel };
+  }
+
+  if (lastAciertos !== null && previousAciertos !== null) {
+    if (lastAciertos > previousAciertos) {
+      return { projectedSuccess, evaluationLabel: "CORRECTA" as EvaluationLabel };
+    }
+
+    if (lastAciertos === previousAciertos) {
+      return { projectedSuccess, evaluationLabel: "INCORRECTA" as EvaluationLabel };
+    }
+  }
+
+  if (lastAciertos !== null && previousAciertos === null) {
+    if (lastAciertos > 0) {
+      return { projectedSuccess, evaluationLabel: "CORRECTA" as EvaluationLabel };
+    }
+
+    return { projectedSuccess, evaluationLabel: "PENDIENTE" as EvaluationLabel };
+  }
+
+  return { projectedSuccess, evaluationLabel: "PENDIENTE" as EvaluationLabel };
 }
 
 export default function HomePage() {
@@ -48,7 +114,6 @@ export default function HomePage() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted] = useState(false);
-  const [, setSuccessCount] = useState(0);
   const [showDiscount, setShowDiscount] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +140,13 @@ export default function HomePage() {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  const { projectedSuccess, evaluationLabel } = useMemo(
+    () => computeGameStatus(messages),
+    [messages]
+  );
+
+  const projectedIndex = Math.min(projectedSuccess, riddles.length);
 
   const updateMageState = useCallback((state: MageState) => {
     if (timeoutRef.current) {
@@ -186,10 +258,6 @@ export default function HomePage() {
           updateMageState("neutro");
         }
 
-        if (aciertos !== null) {
-          setSuccessCount(aciertos);
-        }
-
         if (unlockedDiscount) {
           setShowDiscount(true);
         }
@@ -201,7 +269,7 @@ export default function HomePage() {
         setIsLoading(false);
       }
     },
-    [updateMageState]
+    [evaluationLabel, projectedIndex, projectedSuccess, updateMageState]
   );
 
   const handleStart = async () => {
