@@ -3,52 +3,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Stage } from "@/components/Stage";
 import { ChatInput } from "@/components/ChatInput";
+import {
+  extractAciertos,
+  extractEmotion,
+  hasDiscount,
+  stripTags,
+  type MageState
+} from "@/lib/chatTags";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
-type MageState = "neutro" | "feliz" | "furioso" | "pensando";
-
-type Riddle = {
-  prompt: string;
-  answer: string;
-};
-
-function normalizeAnswer(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9]/g, "");
-}
-
-const DISCOUNT_CODE = "AMOA-MAGO-10";
-
-const riddles: Riddle[] = [
-  {
-    prompt: "Tiene agujas y no cose. ¿Qué es?",
-    answer: normalizeAnswer("reloj")
-  },
-  {
-    prompt: "Vuelo sin alas, lloro sin ojos. ¿Quién soy?",
-    answer: normalizeAnswer("nube")
-  },
-  {
-    prompt: "¿Qué se rompe sin tocarlo?",
-    answer: normalizeAnswer("promesa")
-  }
-];
-
 export default function HomePage() {
   const [mageState, setMageState] = useState<MageState>("neutro");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>(messages);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted] = useState(false);
-  const [successCount, setSuccessCount] = useState(0);
-  const [currentRiddleIndex, setCurrentRiddleIndex] = useState(0);
+  const [, setSuccessCount] = useState(0);
   const [showDiscount, setShowDiscount] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +33,8 @@ export default function HomePage() {
     .filter((message) => message.role === "assistant")
     .map((message) => message.content)
     .pop();
+
+  const lastAssistantDisplay = lastAssistantMessage ? stripTags(lastAssistantMessage) : undefined;
 
   const defaultIntro =
     "¡Bienvenido a Amoa! Soy el mago de los acertijos. Pulsa 'Empezar' cuando quieras jugar.";
@@ -69,6 +46,10 @@ export default function HomePage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const updateMageState = useCallback((state: MageState) => {
     if (timeoutRef.current) {
@@ -85,51 +66,20 @@ export default function HomePage() {
   }, []);
 
   const sendMessage = useCallback(
-    async (rawContent: string, options?: { evaluate?: boolean }) => {
+    async (rawContent: string) => {
       const trimmed = rawContent.trim();
       if (!trimmed) {
         return;
       }
 
-      const shouldEvaluate = options?.evaluate ?? false;
-
       setError(null);
       updateMageState("pensando");
       setIsLoading(true);
 
-      let enrichedContent = trimmed;
-      let evaluationLabel: "CORRECTA" | "INCORRECTA" | "NO_EVALUADA" = "NO_EVALUADA";
-      let isCorrect = false;
-      let projectedSuccess = successCount;
-      let projectedIndex = currentRiddleIndex;
-      let postResponseMageState: MageState = "neutro";
-
-      const isAnswerAttempt =
-        shouldEvaluate && started && !showDiscount && currentRiddleIndex < riddles.length;
-
-      if (isAnswerAttempt) {
-        const expectedAnswer = riddles[currentRiddleIndex]?.answer;
-        const normalizedInput = normalizeAnswer(trimmed);
-        isCorrect = expectedAnswer === normalizedInput;
-        evaluationLabel = isCorrect ? "CORRECTA" : "INCORRECTA";
-        projectedSuccess = isCorrect ? successCount + 1 : successCount;
-        projectedIndex = isCorrect ? currentRiddleIndex + 1 : currentRiddleIndex;
-        postResponseMageState = isCorrect ? "feliz" : "furioso";
-
-        enrichedContent = [
-          `Respuesta del jugador: "${trimmed}".`,
-          `[RESULTADO] ${evaluationLabel}.`,
-          `[PROGRESO] ${projectedSuccess}/${riddles.length}.`,
-          `[ACERTIJO_ACTUAL] ${currentRiddleIndex + 1}.`
-        ].join(" ");
-      }
-
-      let payloadMessages: ChatMessage[] = [];
-
-      setMessages((prev) => {
-        payloadMessages = [...prev, { role: "user", content: enrichedContent }];
-        return payloadMessages;
-      });
+      const userMessage: ChatMessage = { role: "user", content: trimmed };
+      const payloadMessages = [...messagesRef.current, userMessage];
+      messagesRef.current = payloadMessages;
+      setMessages(payloadMessages);
 
       try {
         const response = await fetch("/api/chat", {
@@ -146,28 +96,33 @@ export default function HomePage() {
 
         const data = (await response.json()) as { content?: string };
         const assistantContent = data.content?.trim() || "El mago guarda silencio, algo salió mal.";
+        const emotion = extractEmotion(assistantContent);
+        const aciertos = extractAciertos(assistantContent);
+        const unlockedDiscount = hasDiscount(assistantContent) || (aciertos !== null && aciertos >= 3);
+
         const assistantMessage: ChatMessage = {
           role: "assistant",
           content: assistantContent
         };
 
-        setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => {
+          const nextMessages = [...prev, assistantMessage];
+          messagesRef.current = nextMessages;
+          return nextMessages;
+        });
 
-        if (isAnswerAttempt) {
-          setSuccessCount(projectedSuccess);
-          setCurrentRiddleIndex(projectedIndex);
-
-          if (isCorrect && projectedSuccess >= riddles.length) {
-            setShowDiscount(true);
-          }
-
-          if (postResponseMageState === "feliz" || postResponseMageState === "furioso") {
-            updateMageState(postResponseMageState);
-          } else {
-            updateMageState("neutro");
-          }
+        if (emotion === "feliz" || emotion === "furioso") {
+          updateMageState(emotion);
         } else {
           updateMageState("neutro");
+        }
+
+        if (aciertos !== null) {
+          setSuccessCount(aciertos);
+        }
+
+        if (unlockedDiscount) {
+          setShowDiscount(true);
         }
       } catch (caughtError) {
         console.error(caughtError);
@@ -177,7 +132,7 @@ export default function HomePage() {
         setIsLoading(false);
       }
     },
-    [currentRiddleIndex, showDiscount, started, successCount, updateMageState]
+    [updateMageState]
   );
 
   const handleStart = async () => {
@@ -194,39 +149,28 @@ export default function HomePage() {
       return;
     }
 
-    await sendMessage(inputValue, { evaluate: true });
+    await sendMessage(inputValue);
     setInputValue("");
   };
 
-  const stageText = error
-    ? error
-    : showDiscount
-    ? `${lastAssistantMessage ?? "¡Lo lograste!"}\n\n¡Descuento ficticio desbloqueado! Usa el código ${DISCOUNT_CODE}.`
-    : lastAssistantMessage || defaultIntro;
+  const stageText = error ? error : lastAssistantDisplay || defaultIntro;
 
   const isInputDisabled = isLoading || !started || showDiscount;
 
-  const currentPrompt = started && !showDiscount ? riddles[currentRiddleIndex]?.prompt : undefined;
-
   return (
-    <main className="min-h-screen w-full">
+    <main className="min-h-screen w-full text-white">
       <Stage mageState={mageState} text={stageText}>
         {!started ? (
           <button
             type="button"
             onClick={handleStart}
-            className="w-full rounded-xl bg-indigo-500 px-6 py-3 text-lg font-semibold text-white shadow-lg transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="w-full border-2 border-white/60 px-6 py-3 text-lg font-bold uppercase tracking-[0.3em] text-white transition hover:border-white hover:text-white disabled:cursor-not-allowed disabled:border-white/30 disabled:text-white/30"
             disabled={isLoading}
           >
             Empezar
           </button>
         ) : showDiscount ? null : (
-          <div className="flex flex-col gap-3">
-            {currentPrompt ? (
-              <div className="rounded-lg bg-white/90 px-4 py-2 text-center text-sm font-medium text-slate-700 shadow">
-                {currentPrompt}
-              </div>
-            ) : null}
+          <div className="flex flex-col gap-6">
             <ChatInput
               value={inputValue}
               onChange={setInputValue}

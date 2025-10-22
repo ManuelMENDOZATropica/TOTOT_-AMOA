@@ -19,10 +19,10 @@ export function ChatInput({ value, onChange, onSubmit, disabled, placeholder }: 
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex w-full gap-2 rounded-xl bg-white/90 p-3 shadow-lg backdrop-blur"
+      className="flex w-full items-center gap-3 border-b-2 border-white/60 pb-3"
     >
       <input
-        className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-base text-slate-900 outline-none transition focus:border-indigo-400 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+        className="flex-1 bg-transparent text-base text-white placeholder:text-white/50 outline-none"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -30,7 +30,7 @@ export function ChatInput({ value, onChange, onSubmit, disabled, placeholder }: 
       />
       <button
         type="submit"
-        className="rounded-lg bg-indigo-500 px-4 py-2 text-base font-semibold text-white transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+        className="text-sm font-bold uppercase tracking-[0.2em] text-white transition hover:text-white/80 disabled:cursor-not-allowed disabled:text-white/40"
         disabled={disabled}
       >
         Enviar
