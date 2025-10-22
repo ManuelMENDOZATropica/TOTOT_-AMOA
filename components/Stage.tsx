@@ -51,9 +51,9 @@ export function Stage({ mageState, text, children, className }: StageProps) {
         <Image
           src={mageAssets[mageState]}
           alt="Mago pixel art"
-          width={2000}
-          height={2000}
-          className="w-[70vw] max-w-[1400px]"
+          width={3000}
+          height={3000}
+          className="w-[90vw] max-w-[1400px]"
         />
       </div>
 

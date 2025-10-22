@@ -11,35 +11,35 @@ export type ChatMessage = {
 
 type MageState = "neutro" | "feliz" | "furioso" | "pensando";
 
-type Riddle = {
-  prompt: string;
-  answer: string;
-};
-
-function normalizeAnswer(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9]/g, "");
+function stripTags(content: string) {
+  return content.replace(/\[\[[^\]]+\]\]/g, "").trim();
 }
 
-const DISCOUNT_CODE = "AMOA-MAGO-10";
-
-const riddles: Riddle[] = [
-  {
-    prompt: "Tiene agujas y no cose. ¿Qué es?",
-    answer: normalizeAnswer("reloj")
-  },
-  {
-    prompt: "Vuelo sin alas, lloro sin ojos. ¿Quién soy?",
-    answer: normalizeAnswer("nube")
-  },
-  {
-    prompt: "¿Qué se rompe sin tocarlo?",
-    answer: normalizeAnswer("promesa")
+function extractEmotion(content: string): MageState {
+  const match = content.match(/\[\[EMOCION:(NEUTRO|FELIZ|FURIOSO)\]\]/i);
+  if (!match) {
+    return "neutro";
   }
-];
+
+  const value = match[1].toLowerCase();
+  switch (value) {
+    case "feliz":
+      return "feliz";
+    case "furioso":
+      return "furioso";
+    default:
+      return "neutro";
+  }
+}
+
+function extractAciertos(content: string) {
+  const match = content.match(/\[\[ACIERTOS:(\d+)\]\]/i);
+  return match ? Number.parseInt(match[1], 10) : null;
+}
+
+function hasDiscount(content: string) {
+  return /\[\[DESCUENTO:AMOA-MAGO-10\]\]/i.test(content);
+}
 
 export default function HomePage() {
   const [mageState, setMageState] = useState<MageState>("neutro");
@@ -47,8 +47,7 @@ export default function HomePage() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted] = useState(false);
-  const [successCount, setSuccessCount] = useState(0);
-  const [currentRiddleIndex, setCurrentRiddleIndex] = useState(0);
+  const [, setSuccessCount] = useState(0);
   const [showDiscount, setShowDiscount] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +57,8 @@ export default function HomePage() {
     .filter((message) => message.role === "assistant")
     .map((message) => message.content)
     .pop();
+
+  const lastAssistantDisplay = lastAssistantMessage ? stripTags(lastAssistantMessage) : undefined;
 
   const defaultIntro =
     "¡Bienvenido a Amoa! Soy el mago de los acertijos. Pulsa 'Empezar' cuando quieras jugar.";
@@ -85,36 +86,15 @@ export default function HomePage() {
   }, []);
 
   const sendMessage = useCallback(
-    async (rawContent: string, options?: { evaluate?: boolean }) => {
+    async (rawContent: string) => {
       const trimmed = rawContent.trim();
       if (!trimmed) {
         return;
       }
 
-      const shouldEvaluate = options?.evaluate ?? false;
-
       setError(null);
       updateMageState("pensando");
       setIsLoading(true);
-
-      let evaluationLabel: "CORRECTA" | "INCORRECTA" | "NO_EVALUADA" = "NO_EVALUADA";
-      let isCorrect = false;
-      let projectedSuccess = successCount;
-      let projectedIndex = currentRiddleIndex;
-      let postResponseMageState: MageState = "neutro";
-
-      const isAnswerAttempt =
-        shouldEvaluate && started && !showDiscount && currentRiddleIndex < riddles.length;
-
-      if (isAnswerAttempt) {
-        const expectedAnswer = riddles[currentRiddleIndex]?.answer;
-        const normalizedInput = normalizeAnswer(trimmed);
-        isCorrect = expectedAnswer === normalizedInput;
-        evaluationLabel = isCorrect ? "CORRECTA" : "INCORRECTA";
-        projectedSuccess = isCorrect ? successCount + 1 : successCount;
-        projectedIndex = isCorrect ? currentRiddleIndex + 1 : currentRiddleIndex;
-        postResponseMageState = isCorrect ? "feliz" : "furioso";
-      }
 
       let payloadMessages: ChatMessage[] = [];
 
@@ -182,6 +162,10 @@ export default function HomePage() {
 
         const data = (await response.json()) as { content?: string };
         const assistantContent = data.content?.trim() || "El mago guarda silencio, algo salió mal.";
+        const emotion = extractEmotion(assistantContent);
+        const aciertos = extractAciertos(assistantContent);
+        const unlockedDiscount = hasDiscount(assistantContent) || (aciertos !== null && aciertos >= 3);
+
         const assistantMessage: ChatMessage = {
           role: "assistant",
           content: assistantContent
@@ -189,21 +173,18 @@ export default function HomePage() {
 
         setMessages((prev) => [...prev, assistantMessage]);
 
-        if (isAnswerAttempt) {
-          setSuccessCount(projectedSuccess);
-          setCurrentRiddleIndex(projectedIndex);
-
-          if (isCorrect && projectedSuccess >= riddles.length) {
-            setShowDiscount(true);
-          }
-
-          if (postResponseMageState === "feliz" || postResponseMageState === "furioso") {
-            updateMageState(postResponseMageState);
-          } else {
-            updateMageState("neutro");
-          }
+        if (emotion === "feliz" || emotion === "furioso") {
+          updateMageState(emotion);
         } else {
           updateMageState("neutro");
+        }
+
+        if (aciertos !== null) {
+          setSuccessCount(aciertos);
+        }
+
+        if (unlockedDiscount) {
+          setShowDiscount(true);
         }
       } catch (caughtError) {
         console.error(caughtError);
@@ -213,7 +194,7 @@ export default function HomePage() {
         setIsLoading(false);
       }
     },
-    [currentRiddleIndex, showDiscount, started, successCount, updateMageState]
+    [updateMageState]
   );
 
   const handleStart = async () => {
@@ -230,19 +211,13 @@ export default function HomePage() {
       return;
     }
 
-    await sendMessage(inputValue, { evaluate: true });
+    await sendMessage(inputValue);
     setInputValue("");
   };
 
-  const stageText = error
-    ? error
-    : showDiscount
-    ? `${lastAssistantMessage ?? "¡Lo lograste!"}\n\n¡Descuento ficticio desbloqueado! Usa el código ${DISCOUNT_CODE}.`
-    : lastAssistantMessage || defaultIntro;
+  const stageText = error ? error : lastAssistantDisplay || defaultIntro;
 
   const isInputDisabled = isLoading || !started || showDiscount;
-
-  const currentPrompt = started && !showDiscount ? riddles[currentRiddleIndex]?.prompt : undefined;
 
   return (
     <main className="min-h-screen w-full text-white">
@@ -258,11 +233,6 @@ export default function HomePage() {
           </button>
         ) : showDiscount ? null : (
           <div className="flex flex-col gap-6">
-            {currentPrompt ? (
-              <div className="text-center text-sm font-bold uppercase tracking-[0.35em] text-white drop-shadow-[0_0_10px_rgba(0,0,0,0.6)]">
-                {currentPrompt}
-              </div>
-            ) : null}
             <ChatInput
               value={inputValue}
               onChange={setInputValue}
