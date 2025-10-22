@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage } from "@/components/Stage";
 import { ChatInput } from "@/components/ChatInput";
 import {
@@ -87,7 +87,7 @@ export default function HomePage() {
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ messages: payloadMessages })
+          body: JSON.stringify({ messages: requestMessages })
         });
 
         if (!response.ok) {
