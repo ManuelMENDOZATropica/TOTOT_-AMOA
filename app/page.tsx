@@ -236,7 +236,8 @@ export default function HomePage() {
         }
 
         setMessages((prev) => {
-          const next = [...prev, { role: "assistant", content: "" }];
+          const assistantPlaceholder: ChatMessage = { role: "assistant", content: "" };
+          const next = [...prev, assistantPlaceholder];
           messagesRef.current = next;
           return next;
         });
