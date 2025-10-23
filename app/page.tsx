@@ -72,6 +72,11 @@ export default function HomePage() {
   const [showDiscount, setShowDiscount] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const ambientAudioRef = useRef<HTMLAudioElement | null>(null);
+  const successAudioRef = useRef<HTMLAudioElement | null>(null);
+  const failAudioRef = useRef<HTMLAudioElement | null>(null);
+  const winAudioRef = useRef<HTMLAudioElement | null>(null);
+
   // --- NUEVO: estado cliente del juego, sincronizado con backend ---
   const [amoaState, setAmoaState] = useState<AmoaState>({ aciertos: 0, usados: [], pistasDadas: 0 });
 
@@ -94,7 +99,26 @@ export default function HomePage() {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      ambientAudioRef.current?.pause();
+      successAudioRef.current?.pause();
+      failAudioRef.current?.pause();
+      winAudioRef.current?.pause();
     };
+  }, []);
+
+  useEffect(() => {
+    if (ambientAudioRef.current) {
+      ambientAudioRef.current.volume = 0.4;
+    }
+    if (successAudioRef.current) {
+      successAudioRef.current.volume = 0.7;
+    }
+    if (failAudioRef.current) {
+      failAudioRef.current.volume = 0.7;
+    }
+    if (winAudioRef.current) {
+      winAudioRef.current.volume = 0.8;
+    }
   }, []);
 
   useEffect(() => {
@@ -114,6 +138,50 @@ export default function HomePage() {
       }, 2000);
     }
   }, []);
+
+  const playEffect = useCallback((audio: HTMLAudioElement | null) => {
+    if (!audio) return;
+    audio.currentTime = 0;
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((error) => {
+        console.warn("No se pudo reproducir el audio", error);
+      });
+    }
+  }, []);
+
+  const playAmbient = useCallback(() => {
+    const ambient = ambientAudioRef.current;
+    if (!ambient) return;
+    if (ambient.paused) {
+      ambient.currentTime = 0;
+    }
+    const playPromise = ambient.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((error) => {
+        console.warn("No se pudo reproducir el audio de ambiente", error);
+      });
+    }
+  }, []);
+
+  const stopAmbient = useCallback(() => {
+    const ambient = ambientAudioRef.current;
+    if (!ambient) return;
+    ambient.pause();
+    ambient.currentTime = 0;
+  }, []);
+
+  const playSuccess = useCallback(() => {
+    playEffect(successAudioRef.current);
+  }, [playEffect]);
+
+  const playFailure = useCallback(() => {
+    playEffect(failAudioRef.current);
+  }, [playEffect]);
+
+  const playWin = useCallback(() => {
+    playEffect(winAudioRef.current);
+  }, [playEffect]);
 
   const sendMessage = useCallback(
     async (rawContent: string) => {
@@ -169,6 +237,7 @@ export default function HomePage() {
         const emotion = extractEmotion(assistantContent);
         const aciertos = extractAciertos(assistantContent);
         const unlockedDiscount = hasDiscount(assistantContent) || (aciertos !== null && aciertos >= 3);
+        const willUnlockDiscount = unlockedDiscount && !showDiscount;
 
         const assistantMessage: ChatMessage = { role: "assistant", content: assistantContent };
 
@@ -185,7 +254,20 @@ export default function HomePage() {
         }
 
         if (aciertos !== null) setSuccessCount(aciertos);
-        if (unlockedDiscount) setShowDiscount(true);
+        if (willUnlockDiscount) {
+          setShowDiscount(true);
+          playWin();
+          stopAmbient();
+        } else {
+          if (emotion === "feliz") {
+            playSuccess();
+          } else if (emotion === "furioso") {
+            playFailure();
+          }
+          if (unlockedDiscount) {
+            setShowDiscount(true);
+          }
+        }
       } catch (caughtError) {
         console.error(caughtError);
         setError("El hechizo falló. Intenta de nuevo.");
@@ -194,12 +276,13 @@ export default function HomePage() {
         setIsLoading(false);
       }
     },
-    [amoaState, updateMageState]
+    [amoaState, playFailure, playSuccess, playWin, showDiscount, stopAmbient, updateMageState]
   );
 
   const handleStart = async () => {
     if (started) return;
     setStarted(true);
+    playAmbient();
     await sendMessage("Estoy listo para tus acertijos, Mago.");
   };
 
@@ -219,6 +302,7 @@ export default function HomePage() {
     setError(null);
     setSuccessCount(0);
     setMageState("neutro");
+    stopAmbient();
   };
 
   const stageText = error ? error : lastAssistantDisplay || defaultIntro;
@@ -261,6 +345,10 @@ export default function HomePage() {
           </div>
         )}
       </Stage>
+      <audio ref={ambientAudioRef} src="/sounds/ambient.mp3" preload="auto" loop />
+      <audio ref={successAudioRef} src="/sounds/bien.ogg" preload="auto" />
+      <audio ref={failAudioRef} src="/sounds/mal.ogg" preload="auto" />
+      <audio ref={winAudioRef} src="/sounds/ganar.wav" preload="auto" />
     </main>
   );
 }
