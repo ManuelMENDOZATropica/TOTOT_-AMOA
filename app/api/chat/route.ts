@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Petición inválida" }, { status: 400 });
     }
 
-    const response = await openai.chat.completions.create({
+    const stream = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
@@ -57,12 +57,43 @@ export async function POST(request: Request) {
       ],
       temperature: 0.9,
       top_p: 0.9,
-      presence_penalty: 0.3
+      presence_penalty: 0.3,
+      stream: true
     });
 
-    const content = response.choices[0]?.message?.content ?? "";
+    const encoder = new TextEncoder();
 
-    return NextResponse.json({ content });
+    const readable = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta?.content;
+            if (!delta) {
+              continue;
+            }
+            const payload = JSON.stringify({ type: "text", value: delta });
+            controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+          }
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
+        } catch (error) {
+          console.error("Error al transmitir la respuesta", error);
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: "error", message: "No se pudo completar el hechizo" })}\n\n`)
+          );
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive"
+      }
+    });
   } catch (error) {
     console.error("Error en /api/chat", error);
     return NextResponse.json({ error: "No se pudo completar el hechizo" }, { status: 500 });

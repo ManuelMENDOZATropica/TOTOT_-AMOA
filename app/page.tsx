@@ -61,6 +61,13 @@ function removeMetaTags(s: string) {
   return s.replace(/\[\[META:[^\]]+\]\]/g, "");
 }
 
+function sanitizeForDisplay(content: string) {
+  const stripped = stripTags(content);
+  const metaIndex = stripped.indexOf("[[");
+  const visible = metaIndex >= 0 ? stripped.slice(0, metaIndex) : stripped;
+  return visible.trim();
+}
+
 export default function HomePage() {
   const [mageState, setMageState] = useState<MageState>("neutro");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -71,6 +78,7 @@ export default function HomePage() {
   const [, setSuccessCount] = useState(0);
   const [showDiscount, setShowDiscount] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [streamingDisplay, setStreamingDisplay] = useState<string | null>(null);
 
   const ambientAudioRef = useRef<HTMLAudioElement | null>(null);
   const successAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -87,9 +95,7 @@ export default function HomePage() {
     .map((message) => message.content)
     .pop();
 
-  const lastAssistantDisplay = lastAssistantMessage
-    ? removeMetaTags(stripTags(lastAssistantMessage))
-    : undefined;
+  const lastAssistantDisplay = lastAssistantMessage ? sanitizeForDisplay(removeMetaTags(lastAssistantMessage)) : undefined;
 
   const defaultIntro =
     "¡Bienvenido a mi casa! Soy el mago de los acertijos. Pulsa 'Empezar' cuando quieras jugar.";
@@ -203,6 +209,7 @@ export default function HomePage() {
       }
 
       setError(null);
+      setStreamingDisplay("");
       updateMageState("pensando");
       setIsLoading(true);
 
@@ -224,28 +231,117 @@ export default function HomePage() {
           throw new Error("Respuesta no válida del servidor");
         }
 
-        // --- LEE estado actualizado del backend ---
-        const data = (await response.json()) as { content?: string; state?: AmoaState };
-
-        if (data.state) {
-          setAmoaState(data.state);
+        if (!response.body) {
+          throw new Error("No se pudo abrir el stream de respuesta");
         }
 
-        const assistantContentRaw = data.content?.trim() || "El mago guarda silencio, algo salió mal.";
-        const assistantContent = removeMetaTags(assistantContentRaw);
+        setMessages((prev) => {
+          const assistantPlaceholder: ChatMessage = { role: "assistant", content: "" };
+          const next = [...prev, assistantPlaceholder];
+          messagesRef.current = next;
+          return next;
+        });
 
-        const emotion = extractEmotion(assistantContent);
-        const aciertos = extractAciertos(assistantContent);
-        const unlockedDiscount = hasDiscount(assistantContent) || (aciertos !== null && aciertos >= 3);
-        const willUnlockDiscount = unlockedDiscount && !showDiscount;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let assistantRaw = "";
+        let streamCompleted = false;
 
-        const assistantMessage: ChatMessage = { role: "assistant", content: assistantContent };
+        const processPayload = (payload: { type: string; value?: string; message?: string }) => {
+          if (payload.type === "text" && payload.value) {
+            assistantRaw += payload.value;
+            const partialContent = removeMetaTags(assistantRaw);
+            const displayText = sanitizeForDisplay(partialContent);
+            setStreamingDisplay(displayText);
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const next = [...prev];
+              const lastIndex = next.length - 1;
+              if (next[lastIndex]?.role === "assistant") {
+                next[lastIndex] = { ...next[lastIndex], content: partialContent };
+              }
+              messagesRef.current = next;
+              return next;
+            });
+          } else if (payload.type === "error") {
+            throw new Error(payload.message ?? "No se pudo completar el hechizo");
+          } else if (payload.type === "done") {
+            streamCompleted = true;
+          }
+        };
+
+        while (!streamCompleted) {
+          const { value, done: readerDone } = await reader.read();
+          const chunkValue = decoder.decode(value ?? new Uint8Array(), { stream: !readerDone });
+          buffer += chunkValue;
+
+          const segments = buffer.split("\n\n");
+          buffer = segments.pop() ?? "";
+
+          for (const segment of segments) {
+            const line = segment.trim();
+            if (!line.startsWith("data:")) {
+              continue;
+            }
+
+            const dataStr = line.slice(5).trim();
+            if (!dataStr) {
+              continue;
+            }
+
+            try {
+              const payload = JSON.parse(dataStr) as { type: string; value?: string; message?: string };
+              processPayload(payload);
+            } catch (streamError) {
+              console.error("No se pudo procesar el fragmento del stream", streamError);
+            }
+          }
+
+          if (streamCompleted) {
+            await reader.cancel().catch(() => undefined);
+            break;
+          }
+
+          if (readerDone) {
+            break;
+          }
+        }
+
+        if (buffer.trim().startsWith("data:")) {
+          const dataStr = buffer.trim().slice(5).trim();
+          if (dataStr) {
+            try {
+              const payload = JSON.parse(dataStr) as { type: string; value?: string; message?: string };
+              processPayload(payload);
+            } catch (bufferError) {
+              console.error("No se pudo procesar el residuo del stream", bufferError);
+            }
+          }
+        }
+
+        let finalContent = removeMetaTags(assistantRaw).trim();
+        if (!finalContent) {
+          finalContent = "El mago guarda silencio, algo salió mal.";
+        }
 
         setMessages((prev) => {
-          const nextMessages = [...prev, assistantMessage];
-          messagesRef.current = nextMessages;
-          return nextMessages;
+          if (prev.length === 0) return prev;
+          const next = [...prev];
+          const lastIndex = next.length - 1;
+          if (next[lastIndex]?.role === "assistant") {
+            next[lastIndex] = { ...next[lastIndex], content: finalContent };
+          }
+          messagesRef.current = next;
+          return next;
         });
+
+        setStreamingDisplay(null);
+
+        const emotion = extractEmotion(finalContent);
+        const aciertos = extractAciertos(finalContent);
+        const unlockedDiscount = hasDiscount(finalContent) || (aciertos !== null && aciertos >= 3);
+        const willUnlockDiscount = unlockedDiscount && !showDiscount;
 
         if (emotion === "feliz" || emotion === "furioso") {
           updateMageState(emotion);
@@ -253,7 +349,10 @@ export default function HomePage() {
           updateMageState("neutro");
         }
 
-        if (aciertos !== null) setSuccessCount(aciertos);
+        if (aciertos !== null) {
+          setSuccessCount(aciertos);
+          setAmoaState((prev) => ({ ...prev, aciertos }));
+        }
         if (willUnlockDiscount) {
           setShowDiscount(true);
           playWin();
@@ -270,7 +369,18 @@ export default function HomePage() {
         }
       } catch (caughtError) {
         console.error(caughtError);
+        setStreamingDisplay(null);
         setError("El hechizo falló. Intenta de nuevo.");
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant" && last.content === "") {
+            next.pop();
+          }
+          messagesRef.current = next;
+          return next;
+        });
         updateMageState("neutro");
       } finally {
         setIsLoading(false);
@@ -302,10 +412,19 @@ export default function HomePage() {
     setError(null);
     setSuccessCount(0);
     setMageState("neutro");
+    setStreamingDisplay(null);
     stopAmbient();
   };
 
-  const stageText = error ? error : lastAssistantDisplay || defaultIntro;
+  const stageText = error
+    ? error
+    : streamingDisplay !== null
+    ? streamingDisplay || "el mago esta pensando"
+    : lastAssistantDisplay
+    ? lastAssistantDisplay
+    : isLoading
+    ? "el mago esta pensando"
+    : defaultIntro;
   const isInputDisabled = isLoading || !started || showDiscount;
 
   return (
@@ -342,6 +461,9 @@ export default function HomePage() {
               disabled={isInputDisabled}
               placeholder={isLoading ? "El mago está pensando..." : "Escribe tu respuesta"}
             />
+            {isLoading && (
+              <p className="text-center text-sm uppercase tracking-[0.2em] text-white/80">el mago esta pensando</p>
+            )}
           </div>
         )}
       </Stage>
