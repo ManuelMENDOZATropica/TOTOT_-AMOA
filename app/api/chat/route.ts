@@ -57,8 +57,11 @@ export async function POST(request: Request) {
       }));
 
     const { apiKey, endpoint } = getGeminiConfig();
+    const endpointUrl = new URL(endpoint);
+    endpointUrl.searchParams.set("alt", "sse");
+    endpointUrl.searchParams.set("key", apiKey);
 
-    const geminiResponse = await fetch(`${endpoint}?key=${encodeURIComponent(apiKey)}`, {
+    const geminiResponse = await fetch(endpointUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -109,19 +112,46 @@ export async function POST(request: Request) {
             while (newlineIndex !== -1) {
               const line = buffer.slice(0, newlineIndex).trim();
               buffer = buffer.slice(newlineIndex + 1);
-              if (line) {
-                try {
-                  const parsed = JSON.parse(line);
-                  const candidate = parsed.candidates?.[0];
-                  const parts = candidate?.content?.parts ?? [];
-                  const text = parts
-                    .map((part: { text?: string }) => part.text ?? "")
-                    .join("");
-                  emitText(text);
-                } catch (error) {
-                  console.error("No se pudo parsear el fragmento de Gemini", error);
-                }
+
+              if (!line) {
+                newlineIndex = buffer.indexOf("\n");
+                continue;
               }
+
+              if (!line.startsWith("data:")) {
+                newlineIndex = buffer.indexOf("\n");
+                continue;
+              }
+
+              const payload = line.slice(5).trim();
+
+              if (!payload || payload === "[DONE]") {
+                newlineIndex = buffer.indexOf("\n");
+                continue;
+              }
+
+              try {
+                const parsed = JSON.parse(payload);
+
+                if (parsed.error) {
+                  console.error("Gemini API error", parsed.error);
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ type: "error", message: "No se pudo completar el hechizo" })}\n\n`)
+                  );
+                  controller.close();
+                  return;
+                }
+
+                const candidate = parsed.candidates?.[0];
+                const parts = candidate?.content?.parts ?? [];
+                const text = parts
+                  .map((part: { text?: string }) => part.text ?? "")
+                  .join("");
+                emitText(text);
+              } catch (error) {
+                console.error("No se pudo parsear el fragmento de Gemini", error);
+              }
+
               newlineIndex = buffer.indexOf("\n");
             }
 
@@ -134,13 +164,26 @@ export async function POST(request: Request) {
           const leftover = buffer.trim();
           if (leftover) {
             try {
-              const parsed = JSON.parse(leftover);
-              const candidate = parsed.candidates?.[0];
-              const parts = candidate?.content?.parts ?? [];
-              const text = parts
-                .map((part: { text?: string }) => part.text ?? "")
-                .join("");
-              emitText(text);
+              if (leftover === "[DONE]") {
+                // sin contenido adicional
+              } else if (!leftover.startsWith("data:")) {
+                console.warn("Fragmento final sin cabecera data:", leftover);
+              } else {
+                const payload = leftover.slice(5).trim();
+
+                if (payload && payload !== "[DONE]") {
+                  const parsed = JSON.parse(payload);
+
+                  if (!parsed.error) {
+                    const candidate = parsed.candidates?.[0];
+                    const parts = candidate?.content?.parts ?? [];
+                    const text = parts
+                      .map((part: { text?: string }) => part.text ?? "")
+                      .join("");
+                    emitText(text);
+                  }
+                }
+              }
             } catch (error) {
               console.error("No se pudo parsear el fragmento final de Gemini", error);
             }

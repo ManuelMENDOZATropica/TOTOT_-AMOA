@@ -7,6 +7,7 @@ Micrositio interactivo construido con Next.js (App Router), TypeScript y Tailwin
 - Node.js 18+
 - pnpm 8+
 - Variable de entorno `GOOGLE_GEMINI_API_KEY`
+- (Opcional) Variable de entorno `GOOGLE_GEMINI_MODEL` para sobreescribir el modelo por defecto (`gemini-1.5-flash-latest`)
 
 ## Desarrollo local
 
@@ -21,6 +22,7 @@ Crea un archivo `.env.local` en la raíz del proyecto con la clave de Gemini:
 
 ```
 GOOGLE_GEMINI_API_KEY=tu_api_key_aqui
+# GOOGLE_GEMINI_MODEL=gemini-1.5-pro-latest
 ```
 
 ## Despliegue en Vercel
