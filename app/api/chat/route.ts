@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { openai } from "@/lib/openai";
+import { getGeminiConfig } from "@/lib/gemini";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -49,35 +49,106 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Petición inválida" }, { status: 400 });
     }
 
-    const stream = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...body.messages.map((message) => ({ role: message.role, content: message.content }))
-      ],
-      temperature: 0.9,
-      top_p: 0.9,
-      presence_penalty: 0.3,
-      stream: true
+    const contents = body.messages
+      .filter((message) => message.role !== "system")
+      .map((message) => ({
+        role: message.role === "assistant" ? "model" : "user",
+        parts: [{ text: message.content }]
+      }));
+
+    const { apiKey, endpoint } = getGeminiConfig();
+
+    const geminiResponse = await fetch(`${endpoint}?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: {
+          role: "system",
+          parts: [{ text: systemPrompt }]
+        },
+        generationConfig: {
+          temperature: 0.9,
+          topP: 0.9
+        }
+      })
     });
 
+    if (!geminiResponse.ok || !geminiResponse.body) {
+      const errorPayload = await geminiResponse.text();
+      console.error("Gemini API error", errorPayload);
+      return NextResponse.json({ error: "No se pudo completar el hechizo" }, { status: 500 });
+    }
+
     const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
 
     const readable = new ReadableStream<Uint8Array>({
       async start(controller) {
+        const reader = geminiResponse.body!.getReader();
+        let buffer = "";
+
+        const emitText = (text: string) => {
+          if (!text) {
+            return;
+          }
+          const payload = JSON.stringify({ type: "text", value: text });
+          controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+        };
+
         try {
-          for await (const chunk of stream) {
-            const delta = chunk.choices[0]?.delta?.content;
-            if (!delta) {
-              continue;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (value) {
+              buffer += decoder.decode(value, { stream: !done });
             }
-            const payload = JSON.stringify({ type: "text", value: delta });
-            controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+
+            let newlineIndex = buffer.indexOf("\n");
+            while (newlineIndex !== -1) {
+              const line = buffer.slice(0, newlineIndex).trim();
+              buffer = buffer.slice(newlineIndex + 1);
+              if (line) {
+                try {
+                  const parsed = JSON.parse(line);
+                  const candidate = parsed.candidates?.[0];
+                  const parts = candidate?.content?.parts ?? [];
+                  const text = parts
+                    .map((part: { text?: string }) => part.text ?? "")
+                    .join("");
+                  emitText(text);
+                } catch (error) {
+                  console.error("No se pudo parsear el fragmento de Gemini", error);
+                }
+              }
+              newlineIndex = buffer.indexOf("\n");
+            }
+
+            if (done) {
+              buffer += decoder.decode();
+              break;
+            }
+          }
+
+          const leftover = buffer.trim();
+          if (leftover) {
+            try {
+              const parsed = JSON.parse(leftover);
+              const candidate = parsed.candidates?.[0];
+              const parts = candidate?.content?.parts ?? [];
+              const text = parts
+                .map((part: { text?: string }) => part.text ?? "")
+                .join("");
+              emitText(text);
+            } catch (error) {
+              console.error("No se pudo parsear el fragmento final de Gemini", error);
+            }
           }
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
         } catch (error) {
-          console.error("Error al transmitir la respuesta", error);
+          console.error("Error al transmitir la respuesta de Gemini", error);
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: "error", message: "No se pudo completar el hechizo" })}\n\n`)
           );
