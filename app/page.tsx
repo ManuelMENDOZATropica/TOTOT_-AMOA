@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
 import { Stage } from "@/components/Stage";
 import { ChatInput } from "@/components/ChatInput";
+import { cn } from "@/lib/utils";
 import {
   extractAciertos,
   extractEmotion,
@@ -68,6 +69,14 @@ function sanitizeForDisplay(content: string) {
   return visible.trim();
 }
 
+type VolumeLevel = "normal" | "medium" | "muted";
+
+const volumePresets: Record<VolumeLevel, { ambient: number; success: number; fail: number; win: number }> = {
+  normal: { ambient: 0.4, success: 0.7, fail: 0.7, win: 0.8 },
+  medium: { ambient: 0.2, success: 0.4, fail: 0.4, win: 0.45 },
+  muted: { ambient: 0, success: 0, fail: 0, win: 0 }
+};
+
 export default function HomePage() {
   const [mageState, setMageState] = useState<MageState>("neutro");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -79,6 +88,7 @@ export default function HomePage() {
   const [showDiscount, setShowDiscount] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamingDisplay, setStreamingDisplay] = useState<string | null>(null);
+  const [volumeLevel, setVolumeLevel] = useState<VolumeLevel>("normal");
 
   const ambientAudioRef = useRef<HTMLAudioElement | null>(null);
   const successAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -113,19 +123,18 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (ambientAudioRef.current) {
-      ambientAudioRef.current.volume = 0.4;
-    }
-    if (successAudioRef.current) {
-      successAudioRef.current.volume = 0.7;
-    }
-    if (failAudioRef.current) {
-      failAudioRef.current.volume = 0.7;
-    }
-    if (winAudioRef.current) {
-      winAudioRef.current.volume = 0.8;
-    }
-  }, []);
+    const preset = volumePresets[volumeLevel];
+    const applyVolume = (audio: HTMLAudioElement | null, volume: number) => {
+      if (!audio) return;
+      audio.volume = volume;
+      audio.muted = volume === 0;
+    };
+
+    applyVolume(ambientAudioRef.current, preset.ambient);
+    applyVolume(successAudioRef.current, preset.success);
+    applyVolume(failAudioRef.current, preset.fail);
+    applyVolume(winAudioRef.current, preset.win);
+  }, [volumeLevel]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -427,9 +436,95 @@ export default function HomePage() {
     : defaultIntro;
   const isInputDisabled = isLoading || !started || showDiscount;
 
+  const volumeOptions: Array<{ level: VolumeLevel; label: string; icon: ReactElement }> = [
+    {
+      level: "normal",
+      label: "Volumen normal",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+          <path d="M4 9v6h3l4 4V5L7 9H4Z" fill="currentColor" />
+          <path
+            d="M17 8.5a4.5 4.5 0 0 1 0 7"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M19.5 6a7.5 7.5 0 0 1 0 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )
+    },
+    {
+      level: "medium",
+      label: "Volumen medio",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+          <path d="M4 9v6h3l4 4V5L7 9H4Z" fill="currentColor" />
+          <path
+            d="M17 9.5a3.5 3.5 0 0 1 0 5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )
+    },
+    {
+      level: "muted",
+      label: "Sin volumen",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+          <path d="M4 9v6h3l4 4V5L7 9H4Z" fill="currentColor" />
+          <path
+            d="M17 10l4 4m0-4-4 4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )
+    }
+  ];
+
+  const volumeControls = (
+    <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/25 bg-black/40 p-2 text-white shadow-lg backdrop-blur">
+      {volumeOptions.map(({ level, label, icon }) => (
+        <button
+          key={level}
+          type="button"
+          onClick={() => setVolumeLevel(level)}
+          className={cn(
+            "flex h-10 w-10 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+            "border border-transparent",
+            volumeLevel === level
+              ? "bg-white/25 text-white"
+              : "text-white/70 hover:text-white"
+          )}
+          aria-label={label}
+          title={label}
+          aria-pressed={volumeLevel === level}
+        >
+          {icon}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <main className="min-h-screen w-full text-white">
-      <Stage mageState={mageState} text={stageText}>
+      <Stage mageState={mageState} text={stageText} cornerControls={volumeControls}>
         {!started ? (
           <button
             type="button"

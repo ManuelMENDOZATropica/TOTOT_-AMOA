@@ -15,9 +15,10 @@ type StageProps = {
   text: string;
   children?: ReactNode;
   className?: string;
+  cornerControls?: ReactNode;
 };
 
-export function Stage({ mageState, text, children, className }: StageProps) {
+export function Stage({ mageState, text, children, className, cornerControls }: StageProps) {
   // Animación más sutil según estado
   const mageAnim =
     mageState === "pensando"
@@ -103,6 +104,12 @@ export function Stage({ mageState, text, children, className }: StageProps) {
       <div className="absolute inset-x-0 bottom-16 z-40 flex justify-center px-6 max-sm:bottom-8 max-sm:px-4">
         <div className="w-full max-w-2xl max-sm:max-w-none">{children}</div>
       </div>
+
+      {cornerControls ? (
+        <div className="absolute bottom-6 left-6 z-40 max-sm:bottom-4 max-sm:left-4">
+          {cornerControls}
+        </div>
+      ) : null}
 
       {/* Keyframes locales */}
       <style jsx>{`
