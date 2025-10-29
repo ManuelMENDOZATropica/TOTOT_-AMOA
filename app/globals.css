@@ -13,3 +13,57 @@ body {
 #__next {
   @apply min-h-screen;
 }
+
+.stage {
+  position: relative;
+}
+
+@media (max-width: 640px) {
+  .stage {
+    min-height: 720px;
+    align-items: flex-start;
+  }
+
+  .stage-table {
+    bottom: -12px;
+  }
+
+  .stage-tableImage {
+    max-width: 440px;
+  }
+
+  .stage-text {
+    top: 2rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .stage-textContent {
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+
+  .stage-mage {
+    bottom: -10px;
+  }
+
+  .stage-mageImage {
+    width: 460px;
+    max-width: none;
+  }
+
+  .stage-controls {
+    bottom: 2rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .stage-controlsInner {
+    max-width: none;
+  }
+
+  .stage-corner {
+    bottom: 1rem;
+    left: 1rem;
+  }
+}
