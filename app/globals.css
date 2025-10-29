@@ -20,16 +20,16 @@ body {
 
 @media (max-width: 640px) {
   .stage {
-    min-height: 720px;
+    min-height: 100vh;
     align-items: flex-start;
   }
 
   .stage-table {
-    bottom: -12px;
+    bottom: 95px;
   }
 
   .stage-tableImage {
-    max-width: 440px;
+    max-width: 800px;
   }
 
   .stage-text {
@@ -39,16 +39,16 @@ body {
   }
 
   .stage-textContent {
-    font-size: 1rem;
+    font-size: 1.rem;
     line-height: 1.5;
   }
 
   .stage-mage {
-    bottom: -10px;
+    bottom: 100px;
   }
 
   .stage-mageImage {
-    width: 460px;
+    width: 700px;
     max-width: none;
   }
 
@@ -56,6 +56,7 @@ body {
     bottom: 2rem;
     padding-left: 1rem;
     padding-right: 1rem;
+  
   }
 
   .stage-controlsInner {
@@ -63,7 +64,8 @@ body {
   }
 
   .stage-corner {
-    bottom: 1rem;
+    bottom: 9.5rem;
     left: 1rem;
+    display: none;
   }
 }
