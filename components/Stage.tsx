@@ -32,13 +32,12 @@ export function Stage({ mageState, text, children, className, cornerControls }: 
   return (
     <div
       className={cn(
-        "relative flex min-h-screen w-full items-center justify-center overflow-hidden",
-        "max-sm:min-h-[720px] max-sm:items-start",
+        "stage relative flex min-h-screen w-full items-center justify-center overflow-hidden",
         className,
       )}
     >
       {/* Fondo */}
-      <div className="absolute inset-0 z-0">
+      <div className="stage-background absolute inset-0 z-0">
         <Image
           src="/assets/Fondo.png"
           alt="Escena de fondo"
@@ -50,7 +49,7 @@ export function Stage({ mageState, text, children, className, cornerControls }: 
       </div>
 
       {/* Mesa */}
-      <div className="absolute inset-x-0 bottom-0 z-20 flex justify-center max-sm:bottom-[-12px]">
+      <div className="stage-table absolute inset-x-0 bottom-0 z-20 flex justify-center">
         <Image
           src="/assets/mesa.png"
           alt="Mesa"
@@ -58,14 +57,14 @@ export function Stage({ mageState, text, children, className, cornerControls }: 
           height={400}
           priority
           sizes="(max-width: 1024px) 100vw, 768px"
-          className="w-full max-w-3xl max-sm:max-w-[440px]"
+          className="stage-tableImage w-full max-w-3xl"
         />
       </div>
 
       {/* Texto del mago (accesible) */}
-      <div className="absolute inset-x-0 top-12 z-30 flex justify-center px-6 max-sm:top-8 max-sm:px-4">
+      <div className="stage-text absolute inset-x-0 top-12 z-30 flex justify-center px-6">
         <div
-          className="pointer-events-none w-full max-w-5xl text-center text-lg leading-relaxed text-white drop-shadow-[0_0_12px_rgba(0,0,0,0.65)] sm:text-2xl max-sm:text-base max-sm:leading-normal"
+          className="stage-textContent pointer-events-none w-full max-w-5xl text-center text-lg leading-relaxed text-white drop-shadow-[0_0_12px_rgba(0,0,0,0.65)] sm:text-2xl"
           role="status"
           aria-live="polite"
           aria-atomic="true"
@@ -76,7 +75,7 @@ export function Stage({ mageState, text, children, className, cornerControls }: 
       </div>
 
       {/* Mago */}
-      <div className="absolute inset-x-0 bottom-[-70px] z-10 flex justify-center select-none max-sm:bottom-[-10px]">
+      <div className="stage-mage absolute inset-x-0 bottom-[-70px] z-10 flex justify-center select-none">
         <Image
           src={mageAssets[mageState]}
           alt={
@@ -93,20 +92,19 @@ export function Stage({ mageState, text, children, className, cornerControls }: 
           priority
           sizes="100vw"
           className={cn(
-            "w-[1000px] max-w-[1400px] will-change-transform",
-            "max-sm:w-[460px] max-sm:max-w-none",
+            "stage-mageImage w-[1000px] max-w-[1400px] will-change-transform",
             mageAnim,
           )}
         />
       </div>
 
       {/* Controles / Input */}
-      <div className="absolute inset-x-0 bottom-16 z-40 flex justify-center px-6 max-sm:bottom-8 max-sm:px-4">
-        <div className="w-full max-w-2xl max-sm:max-w-none">{children}</div>
+      <div className="stage-controls absolute inset-x-0 bottom-16 z-40 flex justify-center px-6">
+        <div className="stage-controlsInner w-full max-w-2xl">{children}</div>
       </div>
 
       {cornerControls ? (
-        <div className="absolute bottom-6 left-6 z-40 max-sm:bottom-4 max-sm:left-4">
+        <div className="stage-corner absolute bottom-6 left-6 z-40">
           {cornerControls}
         </div>
       ) : null}
